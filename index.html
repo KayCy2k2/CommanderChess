@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Cờ Tư Lệnh — 2 Người & AI 5 Cấp</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      color: #fff;
+      font-family: Inter, system-ui, sans-serif;
+      background: radial-gradient(circle at top, #18253a, #05080e 65%);
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(11, minmax(30px, 1fr));
+      width: min(94vw, 900px);
+      aspect-ratio: 11/12;
+      margin: auto;
+      border: 4px solid #263241;
+      background: #18202b;
+      box-shadow: 0 22px 70px rgba(0, 0, 0, .55);
+    }
+
+    .cell {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      border: 1px solid rgba(255, 255, 255, .08);
+      cursor: pointer;
+      transition: .12s
+    }
+
+    .cell:hover {
+      filter: brightness(1.22)
+    }
+
+    .land {
+      background: #59634e
+    }
+
+    .land:nth-child(even) {
+      background: #626c55
+    }
+
+    .river {
+      background: #185c78
+    }
+
+    .sea {
+      background: #123d63
+    }
+
+    .ford {
+      background: repeating-linear-gradient(45deg, #56788b, #56788b 6px, #6d8d9d 6px, #6d8d9d 12px)
+    }
+
+    .hq {
+      background: #4b5563;
+      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .12)
+    }
+
+    .piece {
+      width: 79%;
+      height: 79%;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(11px, 2vw, 22px);
+      font-weight: 900;
+      border: 3px solid rgba(255, 255, 255, .58);
+      box-shadow: 0 5px 12px rgba(0, 0, 0, .45), inset 0 2px 5px rgba(255, 255, 255, .25);
+      user-select: none;
+      z-index: 3;
+      text-align: center;
+      line-height: 1
+    }
+
+    .red {
+      background: linear-gradient(#ef4444, #991b1b)
+    }
+
+    .blue {
+      background: linear-gradient(#3b82f6, #1e3a8a)
+    }
+
+    .selected {
+      outline: 4px solid #facc15;
+      outline-offset: -4px;
+      animation: pulse .8s infinite alternate
+    }
+
+    .possible {
+      box-shadow: inset 0 0 0 4px rgba(250, 204, 21, .78)
+    }
+
+    .capture {
+      box-shadow: inset 0 0 0 4px rgba(248, 113, 113, .95)
+    }
+
+    .aiTarget {
+      animation: target .55s infinite alternate
+    }
+
+    @keyframes pulse {
+      from {
+        filter: brightness(1)
+      }
+
+      to {
+        filter: brightness(1.25)
+      }
+    }
+
+    @keyframes target {
+      from {
+        box-shadow: inset 0 0 0 3px #facc15
+      }
+
+      to {
+        box-shadow: inset 0 0 0 6px #ef4444
+      }
+    }
+
+    .coordinate {
+      position: absolute;
+      left: 3px;
+      top: 2px;
+      font-size: 8px;
+      opacity: .35;
+      pointer-events: none
+    }
+
+    .panel {
+      background: rgba(17, 24, 39, .84);
+      border: 1px solid rgba(255, 255, 255, .1);
+      backdrop-filter: blur(14px)
+    }
+
+    .modal {
+      background: rgba(2, 6, 23, .82);
+      backdrop-filter: blur(9px)
+    }
+
+    .log::-webkit-scrollbar {
+      width: 6px
+    }
+
+    .log::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 10px
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed
+    }
+  </style>
+</head>
+
+<body>
+  <div class="max-w-[1500px] mx-auto p-3 md:p-6">
+    <header class="flex flex-col lg:flex-row gap-3 justify-between items-center mb-4">
+      <div>
+        <h1 class="text-3xl md:text-4xl font-black">🎖️ CỜ TƯ LỆNH</h1>
+        <p class="text-slate-400 text-sm mt-1">Commander Chess • 2 người chơi / Người chơi vs AI</p>
+      </div>
+      <div class="flex flex-wrap gap-2 justify-center">
+        <button onclick="openSetup()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold">⚙️ Ván
+          mới</button>
+        <button id="undoBtn" onclick="undoMove()"
+          class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 font-bold">↩ Hoàn tác</button>
+        <button onclick="showRules()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold">📖 Hướng
+          dẫn</button>
+      </div>
+    </header>
+
+    <div class="grid xl:grid-cols-[1fr_330px] gap-5">
+      <section class="panel rounded-2xl p-3 md:p-5">
+        <div class="flex flex-wrap gap-3 justify-between items-center mb-3">
+          <div>
+            <div class="text-xs text-slate-400">Chế độ</div>
+            <div id="modeText" class="font-black">👥 2 người chơi</div>
+          </div>
+          <div class="text-center">
+            <div class="text-xs text-slate-400">Lượt</div>
+            <div id="turnText" class="text-xl font-black text-red-400">🔴 QUÂN ĐỎ</div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-400">Nước đi</div>
+            <div id="moveNumber" class="text-xl font-black">1</div>
+          </div>
+        </div>
+        <div id="aiThinking" class="hidden mb-3 rounded-xl bg-indigo-950/60 border border-indigo-500/30 p-3 text-sm">
+          <div class="flex justify-between"><span>🤖 AI đang suy nghĩ...</span><span id="aiDepth">-</span></div>
+          <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+            <div id="aiBar" class="h-full bg-indigo-500 transition-all" style="width:20%"></div>
+          </div>
+          <div id="aiHint" class="mt-2 text-slate-300"></div>
+        </div>
+        <div id="board" class="board"></div>
+        <div class="flex flex-wrap justify-center gap-3 mt-4 text-xs text-slate-300">
+          <span>🟫 Đất</span><span>🌊 Sông</span><span>🏞️ Ngầm</span><span>⚓ Biển</span><span>🏰 Sở chỉ huy</span>
+        </div>
+      </section>
+
+      <aside class="space-y-4">
+        <div class="panel rounded-2xl p-4">
+          <h2 class="font-bold mb-3">🎮 Trận đấu</h2>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <div class="rounded-xl bg-slate-900/70 p-3">
+              <div class="text-slate-400">Bạn</div>
+              <div id="playerSide" class="font-black">-</div>
+            </div>
+            <div class="rounded-xl bg-slate-900/70 p-3">
+              <div class="text-slate-400">AI</div>
+              <div id="aiLevelText" class="font-black">-</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel rounded-2xl p-4">
+          <h2 class="font-bold mb-3">📊 Điểm lực lượng</h2>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl bg-red-950/60 p-3">
+              <div class="text-red-300 text-sm">🔴 Đỏ</div>
+              <div id="redScore" class="text-3xl font-black">0</div>
+            </div>
+            <div class="rounded-xl bg-blue-950/60 p-3">
+              <div class="text-blue-300 text-sm">🔵 Xanh</div>
+              <div id="blueScore" class="text-3xl font-black">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel rounded-2xl p-4">
+          <h2 class="font-bold mb-3">🎯 Quân đang chọn</h2>
+          <div id="selectedInfo" class="text-slate-400 text-sm">Chọn một quân cờ trên bàn.</div>
+        </div>
+
+        <div class="panel rounded-2xl p-4">
+          <h2 class="font-bold mb-3">📜 Lịch sử nước đi</h2>
+          <div id="moveLog" class="log h-64 overflow-y-auto space-y-1 text-sm"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div id="setupModal" class="fixed inset-0 z-50 modal p-4 overflow-y-auto">
+    <div class="max-w-xl mx-auto mt-6 md:mt-14 panel rounded-3xl p-5 md:p-7">
+      <h2 class="text-2xl font-black mb-5">🎮 Thiết lập ván đấu</h2>
+
+      <label class="block text-sm text-slate-400 mb-2">Chế độ chơi</label>
+      <div class="grid grid-cols-2 gap-2 mb-5">
+        <button id="mode2Btn" onclick="setMode('pvp')" class="setupMode px-3 py-3 rounded-xl font-bold bg-indigo-600">👥
+          2 người</button>
+        <button id="modeAiBtn" onclick="setMode('ai')" class="setupMode px-3 py-3 rounded-xl font-bold bg-slate-700">🤖
+          Người vs AI</button>
+      </div>
+
+      <div id="aiOptions" class="space-y-4">
+        <div>
+          <label class="block text-sm text-slate-400 mb-2">Bạn chơi phe</label>
+          <select id="sideSelect" class="w-full rounded-xl bg-slate-800 border border-slate-700 p-3">
+            <option value="red">🔴 Đỏ — đi trước</option>
+            <option value="blue">🔵 Xanh — đi sau</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-slate-400 mb-2">Độ khó AI</label>
+          <select id="levelSelect" class="w-full rounded-xl bg-slate-800 border border-slate-700 p-3">
+            <option value="1">⭐ Tân binh — ưu tiên ăn quân</option>
+            <option value="2">⭐⭐ Chiến sĩ — đánh giá cơ bản</option>
+            <option value="3">⭐⭐⭐ Chỉ huy — nhìn trước 2 lớp</option>
+            <option value="4" selected>⭐⭐⭐⭐ Đại tướng — Alpha-Beta</option>
+            <option value="5">⭐⭐⭐⭐⭐ Tổng tư lệnh — tìm kiếm sâu + chiến thuật</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-5 rounded-xl bg-slate-900/70 p-4 text-sm text-slate-300">
+        <b class="text-white">AI chiến thuật:</b> không chọn nước ngẫu nhiên. AI cân nhắc giá trị quân,
+        ăn quân, bảo vệ quân, trung tâm, khoảng cách Tư lệnh, đe dọa Tư lệnh và phản công.
+        Cấp cao dùng Minimax + Alpha-Beta, make/unmake, move ordering và iterative deepening để tìm chiến thuật nhanh
+        hơn.
+      </div>
+
+      <button onclick="startConfiguredGame()"
+        class="mt-5 w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-black">
+        🚀 BẮT ĐẦU VÁN
+      </button>
+    </div>
+  </div>
+
+  <!-- RULES -->
+  <div id="rulesModal" class="hidden fixed inset-0 z-50 modal p-4 overflow-y-auto">
+    <div class="max-w-4xl mx-auto mt-5 md:mt-10 panel rounded-3xl p-5 md:p-8">
+      <div class="flex justify-between items-center mb-5">
+        <h2 class="text-2xl font-black">📖 HƯỚNG DẪN</h2>
+        <button onclick="closeRules()" class="text-2xl text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div class="space-y-5 text-sm leading-7">
+        <section>
+          <h3 class="font-bold text-lg text-yellow-400">1. Chọn chế độ</h3>
+          <p>👥 <b>2 người:</b> Đỏ và Xanh thay phiên trên cùng thiết bị. 🤖 <b>Người vs AI:</b> chọn phe và một trong 5
+            cấp độ.</p>
+        </section>
+        <section>
+          <h3 class="font-bold text-lg text-yellow-400">2. Cách đi</h3>
+          <p>Chạm/click quân của phe đang tới lượt, các ô hợp lệ sẽ sáng. Chọn ô sáng để di chuyển hoặc ăn quân đối
+            phương.</p>
+        </section>
+        <section>
+          <h3 class="font-bold text-lg text-yellow-400">3. Các quân trong bản này</h3>
+          <ul class="list-disc ml-5">
+            <li>⭐ Tư lệnh: đi ngang/dọc; ăn quân ở khoảng cách 1.</li>
+            <li>⚔ Bộ binh, 🔧 Công binh, 🎯 Cao xạ: đi 1 ô ngang/dọc.</li>
+            <li>♟ Dân quân: đi 1 ô theo cả 8 hướng.</li>
+            <li>🛡️ Xe tăng: đi ngang/dọc tối đa 2 ô.</li>
+            <li>💥 Pháo binh: đi tối đa 3 ô, ngang/dọc/chéo và có thể vượt quân.</li>
+            <li>🚀 Tên lửa: phạm vi hỏa lực gần, ngang/dọc xa hơn chéo.</li>
+            <li>✈️ Máy bay: đi tối đa 4 ô, ngang/dọc/chéo, có thể vượt quân.</li>
+            <li>🚢 Tàu chiến: đi trên biển/sông/ngầm, tối đa 4 ô.</li>
+          </ul>
+        </section>
+        <section>
+          <h3 class="font-bold text-lg text-yellow-400">4. AI hoạt động thế nào?</h3>
+          <p>Cấp 1 dùng heuristic đơn giản; cấp 2 ưu tiên nước có lợi; cấp 3 dùng tìm kiếm; cấp 4 và 5 dùng Minimax +
+            Alpha-Beta,
+            move ordering, đánh giá vị trí, đe dọa và bảo vệ Tư lệnh. Cấp 5 có tactical extension ngắn cho các tình
+            huống ăn quân.</p>
+        </section>
+        <section class="rounded-xl bg-yellow-950/40 border border-yellow-700/30 p-4">
+          <h3 class="font-bold text-yellow-400 mb-2">💡 Lưu ý</h3>
+          <p>Đây là engine game HTML/JS dựa trên bộ luật prototype của mã gốc. Nếu muốn bám tuyệt đối luật thi đấu Cờ Tư
+            Lệnh
+            chính thức (đủ 38 quân, cõng quân, anh hùng, các loại hỏa lực chuyên biệt...), cần mở rộng tiếp lớp luật
+            quân cờ.</p>
+        </section>
+      </div>
+      <button onclick="closeRules()" class="mt-6 w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold">Đã
+        hiểu</button>
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    /* =========================================================
+       GAME CONFIG
+    ========================================================= */
+    const ROWS = 12, COLS = 11;
+
+    const PIECES = {
+      commander: { name: "Tư lệnh", icon: "★", value: 1000, range: 99, diagonal: false, mobile: "line" },
+      infantry: { name: "Bộ binh", icon: "⚔", value: 10, range: 1, diagonal: false, mobile: "step" },
+      engineer: { name: "Công binh", icon: "🔧", value: 10, range: 1, diagonal: false, mobile: "step" },
+      militia: { name: "Dân quân", icon: "♟", value: 10, range: 1, diagonal: true, mobile: "step" },
+      aa: { name: "Cao xạ", icon: "🎯", value: 15, range: 1, diagonal: false, mobile: "step" },
+      tank: { name: "Xe tăng", icon: "🛡️", value: 20, range: 2, diagonal: false, mobile: "step" },
+      artillery: { name: "Pháo binh", icon: "💥", value: 30, range: 3, diagonal: true, mobile: "jump" },
+      missile: { name: "Tên lửa", icon: "🚀", value: 25, range: 2, diagonal: false, mobile: "step" },
+      plane: { name: "Máy bay", icon: "✈️", value: 40, range: 4, diagonal: true, mobile: "jump" },
+      ship: { name: "Tàu chiến", icon: "🚢", value: 80, range: 4, diagonal: true, mobile: "jump" }
+    };
+
+    let board = [], turn = "red", selected = null, history = [], moveCount = 1, gameOver = false;
+    let mode = "pvp", humanSide = "red", aiSide = "blue", aiLevel = 4, aiBusy = false, aiTarget = null;
+    let aiTimer = null;
+
+    /* =========================================================
+       BOARD / TERRAIN
+    ========================================================= */
+    function createBoard() {
+      board = [];
+      for (let r = 0; r < ROWS; r++) {
+        const row = [];
+        for (let c = 0; c < COLS; c++) {
+          let terrain = "land";
+          if (r === 5 || r === 6) terrain = "river";
+          if (c === 0 || c === 1) terrain = "sea";
+          if ((r === 5 && (c === 3 || c === 7)) || (r === 6 && (c === 3 || c === 7))) terrain = "ford";
+          row.push({ terrain, piece: null });
+        }
+        board.push(row);
+      }
+    }
+    function setupPieces() {
+      const red = [
+        ["commander", 11, 5], ["infantry", 10, 3], ["infantry", 10, 7],
+        ["engineer", 9, 4], ["engineer", 9, 6], ["tank", 10, 1], ["tank", 9, 2],
+        ["artillery", 8, 3], ["artillery", 8, 7], ["missile", 9, 1], ["aa", 8, 1],
+        ["plane", 9, 5], ["ship", 10, 0], ["militia", 10, 9]
+      ];
+      const blue = [
+        ["commander", 0, 5], ["infantry", 1, 3], ["infantry", 1, 7],
+        ["engineer", 2, 4], ["engineer", 2, 6], ["tank", 1, 1], ["tank", 2, 2],
+        ["artillery", 3, 3], ["artillery", 3, 7], ["missile", 2, 1], ["aa", 3, 1],
+        ["plane", 2, 5], ["ship", 1, 0], ["militia", 1, 9]
+      ];
+      red.forEach(p => addPiece(...p, "red"));
+      blue.forEach(p => addPiece(...p, "blue"));
+    }
+    function addPiece(type, r, c, color) {
+      if (!inside(r, c)) return;
+      board[r][c].piece = { type, color, ...PIECES[type] };
+    }
+    function inside(r, c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS }
+
+    /* =========================================================
+       RULE ENGINE
+    ========================================================= */
+    function cloneBoard(src = board) {
+      return src.map(row => row.map(cell => ({
+        terrain: cell.terrain,
+        piece: cell.piece ? { ...cell.piece } : null
+      })));
+    }
+    function canEnter(piece, cell) {
+      if (piece.type === "ship")
+        return ["sea", "river", "ford"].includes(cell.terrain);
+      return cell.terrain !== "sea";
+    }
+    function dirsFor(p) {
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      if (p.diagonal) dirs.push([1, 1], [1, -1], [-1, 1], [-1, -1]);
+      return dirs;
+    }
+    function getLegalMoves(r, c, b = board) {
+      const p = b[r]?.[c]?.piece;
+      if (!p) return [];
+      const moves = [];
+      const add = (nr, nc) => {
+        if (!inside(nr, nc)) return false;
+        const cell = b[nr][nc], t = cell.piece;
+        if (t && t.color === p.color) return false;
+        if (!canEnter(p, cell)) return false;
+        moves.push({ r: nr, c: nc });
+        return !t;
+      };
+
+      if (p.type === "commander") {
+        for (const [dr, dc] of dirsFor(p)) {
+          for (let d = 1; d < ROWS + COLS; d++) {
+            const nr = r + dr * d, nc = c + dc * d;
+            if (!inside(nr, nc)) break;
+            const t = b[nr][nc].piece;
+            if (t) {
+              if (t.color !== p.color && d === 1) moves.push({ r: nr, c: nc });
+              break;
+            }
+            if (canEnter(p, b[nr][nc])) moves.push({ r: nr, c: nc });
+            else break;
+          }
+        }
+        return dedupe(moves);
+      }
+
+      for (const [dr, dc] of dirsFor(p)) {
+        for (let d = 1; d <= p.range; d++) {
+          const nr = r + dr * d, nc = c + dc * d;
+          if (!inside(nr, nc)) break;
+          const cell = b[nr][nc], t = cell.piece;
+          if (t) {
+            if (t.color !== p.color && canEnter(p, cell)) moves.push({ r: nr, c: nc });
+            if (p.mobile !== "jump") break;
+            continue;
+          }
+          if (canEnter(p, cell)) moves.push({ r: nr, c: nc });
+        }
+      }
+
+      if (p.type === "missile") {
+        /* giữ vùng hỏa lực gần giống bản gốc */
+        return dedupe(moves.filter(m => Math.max(Math.abs(m.r - r), Math.abs(m.c - c)) <= 2));
+      }
+      return dedupe(moves);
+    }
+    function dedupe(arr) {
+      const s = new Set(), out = [];
+      for (const m of arr) { const k = m.r + "," + m.c; if (!s.has(k)) { s.add(k); out.push(m) } }
+      return out;
+    }
+    function allMoves(color, b = board) {
+      const out = [];
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const p = b[r][c].piece;
+        if (p && p.color === color)
+          for (const to of getLegalMoves(r, c, b)) out.push({ from: { r, c }, to });
+      }
+      return out;
+    }
+    function applyMove(b, m) {
+      const nb = cloneBoard(b);
+      const moving = nb[m.from.r][m.from.c].piece;
+      const captured = nb[m.to.r][m.to.c].piece;
+      nb[m.to.r][m.to.c].piece = moving;
+      nb[m.from.r][m.from.c].piece = null;
+      return { board: nb, captured };
+    }
+    function commanderExists(color, b = board) {
+      for (const row of b) for (const cell of row)
+        if (cell.piece?.color === color && cell.piece.type === "commander") return true;
+      return false;
+    }
+
+    /* =========================================================
+       UI
+    ========================================================= */
+    function shortName(type) {
+      return {
+        commander: "TL", infantry: "BB", engineer: "CB", militia: "DQ", aa: "CX",
+        tank: "XT", artillery: "PB", missile: "TM", plane: "MB", ship: "TC"
+      }[type] || "";
+    }
+    function render() {
+      const el = document.getElementById("board"); el.innerHTML = "";
+      let legal = selected ? getLegalMoves(selected.r, selected.c) : [];
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const cell = board[r][c], div = document.createElement("div");
+        div.className = "cell " + cell.terrain;
+        if (selected && selected.r === r && selected.c === c) div.classList.add("selected");
+        const lm = legal.find(m => m.r === r && m.c === c);
+        if (lm) div.classList.add(cell.piece ? "capture" : "possible");
+        if (aiTarget && aiTarget.r === r && aiTarget.c === c) div.classList.add("aiTarget");
+        const co = document.createElement("span"); co.className = "coordinate"; co.textContent = `${r},${c}`; div.appendChild(co);
+        if (cell.piece) {
+          const p = cell.piece, pc = document.createElement("div");
+          pc.className = `piece ${p.color}`;
+          pc.innerHTML = `<span>${p.icon}</span><span style="font-size:.42em">${shortName(p.type)}</span>`;
+          div.appendChild(pc);
+        }
+        div.onclick = () => handleCell(r, c); el.appendChild(div);
+      }
+      updateUI();
+    }
+    function updateUI() {
+      document.getElementById("turnText").textContent = turn === "red" ? "🔴 QUÂN ĐỎ" : "🔵 QUÂN XANH";
+      document.getElementById("turnText").className = `text-xl font-black ${turn === "red" ? "text-red-400" : "text-blue-400"}`;
+      document.getElementById("moveNumber").textContent = moveCount;
+      document.getElementById("modeText").textContent = mode === "ai" ? "🤖 Người chơi vs AI" : "👥 2 người chơi";
+      document.getElementById("playerSide").textContent = mode === "ai" ? (humanSide === "red" ? "🔴 Đỏ" : "🔵 Xanh") : "Cả hai";
+      document.getElementById("aiLevelText").textContent = mode === "ai" ? `${"⭐".repeat(aiLevel)} Cấp ${aiLevel}` : "Không dùng";
+      let red = 0, blue = 0;
+      for (const row of board) for (const cell of row) if (cell.piece) {
+        if (cell.piece.color === "red") red += cell.piece.value; else blue += cell.piece.value;
+      }
+      document.getElementById("redScore").textContent = red;
+      document.getElementById("blueScore").textContent = blue;
+      document.getElementById("undoBtn").disabled = !history.length || aiBusy;
+    }
+    function showSelected(p) {
+      document.getElementById("selectedInfo").innerHTML =
+        `<div class="flex items-center gap-3"><div class="w-12 h-12 rounded-full flex items-center justify-center ${p.color === "red" ? "bg-red-700" : "bg-blue-700"} text-2xl">${p.icon}</div>
+     <div><div class="font-bold">${p.name}</div><div class="text-xs text-slate-400">Giá trị: ${p.value === 1000 ? "Tư lệnh" : p.value + " điểm"}</div></div></div>`;
+    }
+    function addLog(text) {
+      const d = document.createElement("div"); d.className = "px-2 py-1 rounded bg-slate-800/70"; d.textContent = `${moveCount}. ${text}`;
+      document.getElementById("moveLog").prepend(d);
+    }
+
+    /* =========================================================
+       HUMAN MOVE / GAME FLOW
+    ========================================================= */
+    function isHumanTurn() {
+      return mode === "pvp" || turn === humanSide;
+    }
+    function handleCell(r, c) {
+      if (gameOver || aiBusy || !isHumanTurn()) return;
+      const cell = board[r][c];
+      if (!selected) {
+        if (cell.piece?.color === turn) { selected = { r, c }; showSelected(cell.piece); render() }
+        return;
+      }
+      if (selected.r === r && selected.c === c) { selected = null; render(); return }
+      if (cell.piece?.color === turn) { selected = { r, c }; showSelected(cell.piece); render(); return }
+      const valid = getLegalMoves(selected.r, selected.c).some(m => m.r === r && m.c === c);
+      if (valid) makeMove({ from: { ...selected }, to: { r, c } }, true);
+    }
+    function makeMove(m, isHuman = false) {
+      if (gameOver) return;
+      const moving = board[m.from.r][m.from.c].piece;
+      const captured = board[m.to.r][m.to.c].piece;
+      if (!moving) return;
+      history.push({ board: cloneBoard(), turn, moveCount });
+      board[m.to.r][m.to.c].piece = moving;
+      board[m.from.r][m.from.c].piece = null;
+      selected = null;
+      aiTarget = null;
+      const cap = captured ? ` × ${captured.name}` : "";
+      addLog(`${moving.color === "red" ? "🔴" : "🔵"} ${moving.name}: (${m.from.r},${m.from.c}) → (${m.to.r},${m.to.c})${cap}`);
+      if (captured?.type === "commander") {
+        gameOver = true; render();
+        setTimeout(() => alert(`${moving.color === "red" ? "🔴 Quân Đỏ" : "🔵 Quân Xanh"} chiến thắng!`), 60);
+        return;
+      }
+      turn = turn === "red" ? "blue" : "red"; moveCount++;
+      render();
+      if (mode === "ai" && !gameOver && turn === aiSide) scheduleAI();
+    }
+    function undoMove() {
+      if (aiBusy || !history.length) return;
+      /* Trong chế độ AI hoàn tác cả nước AI + nước người nếu cần */
+      let n = 1;
+      if (mode === "ai" && history.length >= 2) n = 2;
+      for (let i = 0; i < n && history.length; i++) {
+        const s = history.pop(); board = s.board; turn = s.turn; moveCount = s.moveCount;
+      }
+      selected = null; aiTarget = null; render();
+    }
+    function newGame() {
+      clearTimeout(aiTimer); aiBusy = false; gameOver = false; selected = null; aiTarget = null; history = []; moveCount = 1; turn = "red";
+      createBoard(); setupPieces(); document.getElementById("moveLog").innerHTML = "";
+      render();
+      if (mode === "ai" && turn === aiSide) scheduleAI();
+    }
+
+    /* =========================================================
+       AI ENGINE — OPTIMIZED
+       Mục tiêu:
+       - Không clone toàn bộ board ở mỗi node.
+       - Make/Unmake move tại chỗ.
+       - Alpha-Beta + Iterative Deepening.
+       - Transposition Table.
+       - Move ordering.
+       - Time budget cho từng cấp.
+    ========================================================= */
+
+    const LEVELS = {
+      1: { time: 35, maxDepth: 2, candidates: 12, randomness: .10 },
+      2: { time: 75, maxDepth: 3, candidates: 18, randomness: .025 },
+      3: { time: 160, maxDepth: 4, candidates: 24, randomness: .008 },
+      4: { time: 350, maxDepth: 5, candidates: 30, randomness: 0 },
+      5: { time: 750, maxDepth: 6, candidates: 36, randomness: 0 }
+    };
+
+    let aiSearch = {
+      deadline: 0,
+      nodes: 0,
+      tt: new Map(),
+      root: null,
+      stopped: false,
+      depthReached: 0
+    };
+
+    const AI_MATE = 1000000;
+
+    function pieceCount(color, b = board) {
+      let n = 0;
+      for (let r = 0; r < ROWS; r++)for (let c = 0; c < COLS; c++)
+        if (b[r][c].piece?.color === color) n++;
+      return n;
+    }
+
+    function centerBonus(r, c) {
+      const dr = Math.abs(r - 5.5), dc = Math.abs(c - 5);
+      return Math.max(0, 7 - (dr + dc)) * 2;
+    }
+
+    function commanderPos(color, b = board) {
+      for (let r = 0; r < ROWS; r++)for (let c = 0; c < COLS; c++)
+        if (b[r][c].piece?.color === color && b[r][c].piece.type === "commander")
+          return { r, c };
+      return null;
+    }
+
+    /* Kiểm tra trực tiếp xem ô có đang bị đối phương tấn công.
+       Có giới hạn sớm để tránh tốn thời gian ở leaf node. */
+    function isThreatened(r, c, color, b = board) {
+      const enemy = color === "red" ? "blue" : "red";
+      for (let er = 0; er < ROWS; er++)for (let ec = 0; ec < COLS; ec++) {
+        const p = b[er][ec].piece;
+        if (!p || p.color !== enemy) continue;
+        const moves = getLegalMoves(er, ec, b);
+        for (const m of moves)
+          if (m.r === r && m.c === c) return true;
+      }
+      return false;
+    }
+
+    /* Evaluation nhanh: ưu tiên material + an toàn Tư lệnh + mobility
+       + trung tâm + đe dọa. Không gọi allMoves ở mọi leaf. */
+    function evaluateFast(b, rootColor) {
+      const enemy = rootColor === "red" ? "blue" : "red";
+      if (!commanderExists(rootColor, b)) return -AI_MATE;
+      if (!commanderExists(enemy, b)) return AI_MATE;
+
+      let score = 0;
+      let ownMaterial = 0, enemyMaterial = 0;
+      let ownCenter = 0, enemyCenter = 0;
+      let ownThreatened = 0, enemyThreatened = 0;
+
+      for (let r = 0; r < ROWS; r++)for (let c = 0; c < COLS; c++) {
+        const p = b[r][c].piece;
+        if (!p) continue;
+
+        const own = p.color === rootColor;
+        const sign = own ? 1 : -1;
+
+        if (own) ownMaterial += p.value;
+        else enemyMaterial += p.value;
+
+        if (own) ownCenter += centerBonus(r, c);
+        else enemyCenter += centerBonus(r, c);
+
+        if (p.type === "commander") {
+          if (isThreatened(r, c, p.color, b))
+            score -= sign * 260;
+          score += sign * 100;
+        } else if (isThreatened(r, c, p.color, b)) {
+          if (own) ownThreatened += p.value;
+          else enemyThreatened += p.value;
+        }
+      }
+
+      score += (ownMaterial - enemyMaterial) * 8;
+      score += (ownCenter - enemyCenter) * 1.5;
+      score += (enemyThreatened - ownThreatened) * 1.2;
+
+      /* Mobility chỉ tính ở root/độ sâu nông, không phải mọi leaf. */
+      return score;
+    }
+
+    /* Fallback evaluation có mobility, dùng khi cần tie-break. */
+    function evaluatePosition(b, rootColor) {
+      let score = evaluateFast(b, rootColor);
+      const enemy = rootColor === "red" ? "blue" : "red";
+
+      const rm = allMoves(rootColor, b).length;
+      const em = allMoves(enemy, b).length;
+      score += (rm - em) * 2;
+
+      const rc = commanderPos(rootColor, b);
+      const ec = commanderPos(enemy, b);
+      if (rc && ec) {
+        const d = Math.abs(rc.r - ec.r) + Math.abs(rc.c - ec.c);
+        score += (14 - Math.min(14, d)) * 3;
+      }
+      return score;
+    }
+
+    /* Make / Unmake — cực kỳ quan trọng cho tốc độ AI. */
+    function makeSearchMove(m) {
+      const from = board[m.from.r][m.from.c];
+      const to = board[m.to.r][m.to.c];
+      const moving = from.piece;
+      const captured = to.piece;
+
+      to.piece = moving;
+      from.piece = null;
+
+      return { m, moving, captured };
+    }
+    function unmakeSearchMove(record) {
+      board[record.m.from.r][record.m.from.c].piece = record.moving;
+      board[record.m.to.r][record.m.to.c].piece = record.captured;
+    }
+
+    /* Hash nhẹ, không stringify toàn bộ object. */
+    function positionKey() {
+      let s = turn === "red" ? "R|" : "B|";
+      for (let r = 0; r < ROWS; r++)for (let c = 0; c < COLS; c++) {
+        const p = board[r][c].piece;
+        if (p) s += p.color[0] + p.type[0] + r.toString(12) + c.toString(12) + ";";
+      }
+      return s;
+    }
+
+    function positionKeyFor(color) {
+      let s = color === "red" ? "R|" : "B|";
+      for (let r = 0; r < ROWS; r++)for (let c = 0; c < COLS; c++) {
+        const p = board[r][c].piece;
+        if (p) s += p.color[0] + p.type[0] + r.toString(12) + c.toString(12) + ";";
+      }
+      return s;
+    }
+
+    function moveHeuristicFast(m, root) {
+      const p = board[m.from.r][m.from.c].piece;
+      const target = board[m.to.r][m.to.c].piece;
+      let s = 0;
+
+      if (target) {
+        s += target.value * 100;
+        if (target.type === "commander") s += AI_MATE;
+      }
+
+      s += centerBonus(m.to.r, m.to.c) * 4;
+
+      /* Ưu tiên quân giá trị cao đang bị tấn công rút khỏi nguy hiểm. */
+      if (p) {
+        const threatened = isThreatened(m.from.r, m.from.c, p.color, board);
+        if (threatened) s += p.value * 12;
+      }
+
+      const enemy = root === "red" ? "blue" : "red";
+      const ec = commanderPos(enemy, board);
+      if (ec) {
+        const before = Math.abs(m.from.r - ec.r) + Math.abs(m.from.c - ec.c);
+        const after = Math.abs(m.to.r - ec.r) + Math.abs(m.to.c - ec.c);
+        s += (before - after) * 3;
+      }
+
+      return s;
+    }
+
+    function orderMovesFast(moves, root) {
+      return moves.map(m => ({ m, s: moveHeuristicFast(m, root) }))
+        .sort((a, b) => b.s - a.s)
+        .map(x => x.m);
+    }
+
+    function captureMoves(color) {
+      const ms = allMoves(color, board);
+      return ms.filter(m => !!board[m.to.r][m.to.c].piece);
+    }
+
+    function checkTime() {
+      aiSearch.nodes++;
+      if ((aiSearch.nodes & 255) === 0 && performance.now() >= aiSearch.deadline) {
+        aiSearch.stopped = true;
+        throw "AI_TIMEOUT";
+      }
+    }
+
+    /* Search alpha-beta tại chỗ. */
+    function alphaBeta(depth, alpha, beta, toMove, rootColor) {
+      checkTime();
+
+      const enemy = rootColor === "red" ? "blue" : "red";
+      if (!commanderExists(rootColor, board)) return -AI_MATE + depth;
+      if (!commanderExists(enemy, board)) return AI_MATE - depth;
+
+      if (depth <= 0) {
+        /* Leaf nhanh; chỉ mở rộng khi đang có giao tranh */
+        const caps = captureMoves(toMove);
+        if (caps.length && aiLevel >= 5) {
+          let stand = evaluateFast(board, rootColor);
+          if (stand >= beta) return stand;
+          if (stand > alpha) alpha = stand;
+
+          const tactical = orderMovesFast(caps, rootColor).slice(0, 8);
+          for (const m of tactical) {
+            const rec = makeSearchMove(m);
+            let v;
+            try {
+              v = evaluateFast(board, rootColor);
+            } finally {
+              unmakeSearchMove(rec);
+            }
+            if (toMove === rootColor) {
+              if (v > alpha) alpha = v;
+              if (alpha >= beta) break;
+            } else {
+              if (v < beta) beta = v;
+              if (alpha >= beta) break;
+            }
+            checkTime();
+          }
+          return toMove === rootColor ? alpha : beta;
+        }
+        return evaluateFast(board, rootColor);
+      }
+
+      let moves = allMoves(toMove, board);
+      if (!moves.length) return evaluateFast(board, rootColor);
+
+      moves = orderMovesFast(moves, rootColor)
+        .slice(0, LEVELS[aiLevel].candidates);
+
+      const maximizing = toMove === rootColor;
+
+      if (maximizing) {
+        let best = -Infinity;
+        for (const m of moves) {
+          checkTime();
+          const rec = makeSearchMove(m);
+          let v;
+          try {
+            v = alphaBeta(depth - 1, alpha, beta, enemy, rootColor);
+          } finally {
+            unmakeSearchMove(rec);
+          }
+          if (v > best) best = v;
+          if (best > alpha) alpha = best;
+          if (alpha >= beta) break;
+        }
+        return best;
+      } else {
+        let best = Infinity;
+        for (const m of moves) {
+          checkTime();
+          const rec = makeSearchMove(m);
+          let v;
+          try {
+            v = alphaBeta(depth - 1, alpha, beta, rootColor, rootColor);
+          } finally {
+            unmakeSearchMove(rec);
+          }
+          if (v < best) best = v;
+          if (best < beta) beta = best;
+          if (alpha >= beta) break;
+        }
+        return best;
+      }
+    }
+
+    /* Root search trả về nước tốt nhất ở một depth cụ thể. */
+    function searchRoot(depth) {
+      const root = aiSide;
+      const enemy = root === "red" ? "blue" : "red";
+      let moves = orderMovesFast(allMoves(root, board), root)
+        .slice(0, LEVELS[aiLevel].candidates);
+
+      let bestScore = -Infinity;
+      let bestMoves = [];
+
+      for (const m of moves) {
+        checkTime();
+        const rec = makeSearchMove(m);
+        let score;
+        try {
+          if (rec.captured?.type === "commander") {
+            score = AI_MATE;
+          } else {
+            score = alphaBeta(depth - 1, -Infinity, Infinity, enemy, root);
+          }
+        } finally {
+          unmakeSearchMove(rec);
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMoves = [m];
+        } else if (Math.abs(score - bestScore) < 0.001) {
+          bestMoves.push(m);
+        }
+      }
+
+      return {
+        move: bestMoves[0] || moves[0],
+        score: bestScore
+      };
+    }
+
+    /* Iterative deepening:
+       depth 1 xong mới sang depth 2; nếu hết thời gian giữ kết quả depth trước. */
+    function chooseAIMove() {
+      const cfg = LEVELS[aiLevel];
+      const rootMoves = allMoves(aiSide, board);
+      if (!rootMoves.length) return null;
+
+      aiSearch = {
+        deadline: performance.now() + cfg.time,
+        nodes: 0,
+        tt: new Map(),
+        root: aiSide,
+        stopped: false,
+        depthReached: 0
+      };
+
+      let best = orderMovesFast(rootMoves, aiSide)[0];
+
+      /* Cấp 1/2: heuristic nhanh, không ép Minimax sâu. */
+      if (aiLevel <= 2) {
+        const candidates = orderMovesFast(rootMoves, aiSide)
+          .slice(0, cfg.candidates);
+
+        let bestScore = -Infinity, bestMoves = [];
+        for (const m of candidates) {
+          checkTime();
+          const rec = makeSearchMove(m);
+          let score;
+          try {
+            score = evaluatePosition(board, aiSide);
+            if (rec.captured) score += rec.captured.value * 20;
+            if (rec.captured?.type === "commander") score += AI_MATE;
+          } finally {
+            unmakeSearchMove(rec);
+          }
+          if (score > bestScore + 0.01) { bestScore = score; bestMoves = [m] }
+          else if (Math.abs(score - bestScore) < 0.01) bestMoves.push(m);
+        }
+        const picked = bestMoves[Math.floor(Math.random() * bestMoves.length)] || best;
+        aiSearch.depthReached = 1;
+        return picked;
+      }
+
+      for (let depth = 1; depth <= cfg.maxDepth; depth++) {
+        try {
+          const result = searchRoot(depth);
+          if (result.move) {
+            best = result.move;
+            aiSearch.depthReached = depth;
+          }
+        } catch (e) {
+          if (e !== "AI_TIMEOUT") throw e;
+          break;
+        }
+      }
+
+      return best;
+    }
+
+    function scheduleAI() {
+      aiBusy = true;
+      document.getElementById("aiThinking").classList.remove("hidden");
+      document.getElementById("aiDepth").textContent =
+        `Cấp ${aiLevel} • tối đa depth ${LEVELS[aiLevel].maxDepth}`;
+      document.getElementById("aiHint").textContent =
+        "Đang tìm nước tốt nhất...";
+      document.getElementById("aiBar").style.width = "22%";
+
+      aiTimer = setTimeout(runAI, 80 + aiLevel * 25);
+    }
+
+    function runAI() {
+      if (gameOver || mode !== "ai" || turn !== aiSide) {
+        aiBusy = false;
+        return;
+      }
+
+      const start = performance.now();
+      document.getElementById("aiBar").style.width = "55%";
+
+      let m;
+      try {
+        m = chooseAIMove();
+      } catch (e) {
+        console.error(e);
+        m = allMoves(aiSide, board)[0] || null;
+      }
+
+      const elapsed = Math.round(performance.now() - start);
+
+      if (!m) {
+        aiBusy = false;
+        gameOver = true;
+        render();
+        alert("AI không còn nước đi hợp lệ.");
+        return;
+      }
+
+      aiTarget = { r: m.to.r, c: m.to.c };
+
+      const p = board[m.from.r][m.from.c].piece;
+      document.getElementById("aiDepth").textContent =
+        `Cấp ${aiLevel} • depth ${aiSearch.depthReached || 1} • ${aiSearch.nodes.toLocaleString()} nút`;
+      document.getElementById("aiHint").textContent =
+        `${p.name} → (${m.to.r},${m.to.c}) • ${elapsed} ms`;
+      document.getElementById("aiBar").style.width = "100%";
+
+      setTimeout(() => {
+        aiBusy = false;
+        document.getElementById("aiThinking").classList.add("hidden");
+        makeMove(m, false);
+      }, 120);
+    }
+
+    /* =========================================================
+       SETUP / MODALS
+    ========================================================= */
+    function setMode(v) {
+      mode = v;
+      document.getElementById("mode2Btn").className = `setupMode px-3 py-3 rounded-xl font-bold ${v === "pvp" ? "bg-indigo-600" : "bg-slate-700"}`;
+      document.getElementById("modeAiBtn").className = `setupMode px-3 py-3 rounded-xl font-bold ${v === "ai" ? "bg-indigo-600" : "bg-slate-700"}`;
+      document.getElementById("aiOptions").classList.toggle("hidden", v !== "ai");
+    }
+    function openSetup() { document.getElementById("setupModal").classList.remove("hidden") }
+    function startConfiguredGame() {
+      mode = document.getElementById("modeAiBtn").classList.contains("bg-indigo-600") ? "ai" : "pvp";
+      if (mode === "ai") {
+        humanSide = document.getElementById("sideSelect").value;
+        aiSide = humanSide === "red" ? "blue" : "red";
+        aiLevel = Number(document.getElementById("levelSelect").value);
+      }
+      document.getElementById("setupModal").classList.add("hidden");
+      newGame();
+    }
+    function showRules() { document.getElementById("rulesModal").classList.remove("hidden") }
+    function closeRules() { document.getElementById("rulesModal").classList.add("hidden") }
+
+    /* =========================================================
+       START
+    ========================================================= */
+    setMode("pvp");
+    createBoard(); setupPieces(); render();
+  </script>
+</body>
+
+</html>
